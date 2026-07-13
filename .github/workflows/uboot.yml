@@ -24,11 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch rkbin loaderimage (sparse, pinned)
+      - name: Fetch rkbin tools + trust blobs (sparse, pinned)
         run: |
           git clone --filter=blob:none --no-checkout \
               https://github.com/rockchip-linux/rkbin.git "${GITHUB_WORKSPACE}/../rkbin"
-          git -C "${GITHUB_WORKSPACE}/../rkbin" sparse-checkout set tools
+          git -C "${GITHUB_WORKSPACE}/../rkbin" sparse-checkout set --no-cone \
+              '/tools/*' '/RKTRUST/*' '/bin/rk33/rk3308_bl31*'
           git -C "${GITHUB_WORKSPACE}/../rkbin" checkout "${RKBIN_REV}"
 
       - name: Build container
@@ -40,8 +41,8 @@ jobs:
               -u "$(id -u):$(id -g)" \
               -e HOME=/tmp \
               -v "${GITHUB_WORKSPACE}:/src" \
-              -v "$(realpath "${GITHUB_WORKSPACE}/../rkbin"):/rkbin:ro" \
-              -e LOADERIMAGE=/rkbin/tools/loaderimage \
+              -v "$(realpath "${GITHUB_WORKSPACE}/../rkbin"):/rkbin" \
+              -e RKBIN=/rkbin \
               -w /src \
               rithum-uboot-build ci/build.sh
 
@@ -50,6 +51,7 @@ jobs:
           name: uboot-${{ github.ref_name }}-${{ github.sha }}
           path: |
             uboot.img
+            trust.img
             sha256sums.txt
 
       - name: Release
@@ -57,6 +59,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" uboot.img sha256sums.txt \
+          gh release create "${GITHUB_REF_NAME}" uboot.img trust.img sha256sums.txt \
               --title "${GITHUB_REF_NAME}" \
-              --notes "uboot.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. Flash to the uboot partition only; trust/loader stay on factory versions."
+              --notes "uboot.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. Flash uboot.img to the uboot partition. trust.img (BL31 from pinned rkbin) is provided for bench testing and is NOT flashed to the fleet by default; the loader stays on its factory version."
