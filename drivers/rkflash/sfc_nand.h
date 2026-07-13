@@ -110,6 +110,15 @@ struct nand_info {
 	u8 spare_offs_1;
 	u8 spare_offs_2;
 	u32 (*ecc_status)(void);
+
+	/*
+	 * Explicit 3rd/4th spare meta offsets for 4KB-page chips whose
+	 * meta layout is not {offs_1, offs_2, offs_1 + 4, offs_2 + 4}.
+	 * 0 (default for entries that omit them) keeps the legacy
+	 * offs + 4 behaviour.
+	 */
+	u8 spare_offs_3;
+	u8 spare_offs_4;
 };
 
 extern struct nand_phy_info	g_nand_phy_info;

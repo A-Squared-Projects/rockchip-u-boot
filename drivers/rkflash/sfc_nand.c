@@ -23,6 +23,8 @@ static struct nand_info spi_nand_tbl[] = {
 	{0xC212, 4, 64, 1, 1024, 0x13, 0x10, 0x03, 0x02, 0x6B, 0x32, 0xD8, 0x0C, 18, 4, 0xB0, 0, 4, 8, &sfc_nand_ecc_status_sp1},
 	/* MX35LF2GE4AB */
 	{0xC222, 4, 64, 2, 1024, 0x13, 0x10, 0x03, 0x02, 0x6B, 0x32, 0xD8, 0x0C, 19, 4, 0xB0, 0, 4, 8, &sfc_nand_ecc_status_sp1},
+	/* MX35LF4GE4AD */
+	{0xC237, 8, 64, 1, 2048, 0x13, 0x10, 0x03, 0x02, 0x6B, 0x32, 0xD8, 0x0C, 20, 8, 0xB0, 0, 4, 8, NULL, 0x14, 0x18},
 	/* GD5F1GQ4UAYIG */
 	{0xC8F1, 4, 64, 1, 1024, 0x13, 0x10, 0x03, 0x02, 0x6B, 0x32, 0xD8, 0x0C, 18, 8, 0xB0, 0, 4, 8, NULL},
 	/* MT29F1G01ZAC */
@@ -492,8 +494,13 @@ u32 sfc_nand_prog_page(u8 cs, u32 addr, u32 *p_data, u32 *p_spare)
 	gp_page_buf[(data_size + spare_offs_1) / 4] = p_spare[0];
 	gp_page_buf[(data_size + spare_offs_2) / 4] = p_spare[1];
 	if (sec_per_page == 8) {
-		gp_page_buf[(data_size + spare_offs_1) / 4 + 1] = p_spare[2];
-		gp_page_buf[(data_size + spare_offs_2) / 4 + 1] = p_spare[3];
+		u32 spare_offs_3 = p_nand_info->spare_offs_3 ?
+			p_nand_info->spare_offs_3 : spare_offs_1 + 4;
+		u32 spare_offs_4 = p_nand_info->spare_offs_4 ?
+			p_nand_info->spare_offs_4 : spare_offs_2 + 4;
+
+		gp_page_buf[(data_size + spare_offs_3) / 4] = p_spare[2];
+		gp_page_buf[(data_size + spare_offs_4) / 4] = p_spare[3];
 	}
 	ret = sfc_nand_prog_page_raw(cs, addr, gp_page_buf);
 
@@ -555,8 +562,13 @@ u32 sfc_nand_read_page(u8 cs, u32 addr, u32 *p_data, u32 *p_spare)
 	p_spare[0] = gp_page_buf[(data_size + spare_offs_1) / 4];
 	p_spare[1] = gp_page_buf[(data_size + spare_offs_2) / 4];
 	if (p_nand_info->sec_per_page == 8) {
-		p_spare[2] = gp_page_buf[(data_size + spare_offs_1) / 4 + 1];
-		p_spare[3] = gp_page_buf[(data_size + spare_offs_2) / 4 + 1];
+		u32 spare_offs_3 = p_nand_info->spare_offs_3 ?
+			p_nand_info->spare_offs_3 : spare_offs_1 + 4;
+		u32 spare_offs_4 = p_nand_info->spare_offs_4 ?
+			p_nand_info->spare_offs_4 : spare_offs_2 + 4;
+
+		p_spare[2] = gp_page_buf[(data_size + spare_offs_3) / 4];
+		p_spare[3] = gp_page_buf[(data_size + spare_offs_4) / 4];
 	}
 
 	if (ret != SFC_NAND_ECC_OK) {
