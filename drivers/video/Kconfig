@@ -415,7 +415,7 @@ config DISPLAY
 	bool "Enable Display support"
 	depends on DM
 	default n
-	select I2C_EDID
+	imply I2C_EDID
 	help
 	   This supports drivers that provide a display, such as eDP (Embedded
 	   DisplayPort) and HDMI (High Definition Multimedia Interface).
