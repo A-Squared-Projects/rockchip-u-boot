@@ -122,6 +122,7 @@ static const struct rockchip_crtc rk3506_vop_data = {
 	.data = &rk3506_vop,
 };
 
+#ifdef CONFIG_ROCKCHIP_VOP2
 static const struct rockchip_crtc rk3528_vop_data = {
 	.funcs = &rockchip_vop2_funcs,
 	.data = &rk3528_vop,
@@ -141,16 +142,19 @@ static const struct rockchip_crtc rk3576_vop_data = {
 	.funcs = &rockchip_vop2_funcs,
 	.data = &rk3576_vop,
 };
+#endif
 
 static const struct rockchip_crtc rk3576_vop_lit_data = {
 	.funcs = &rockchip_vop_funcs,
 	.data = &rk3576_vop_lit,
 };
 
+#ifdef CONFIG_ROCKCHIP_VOP2
 static const struct rockchip_crtc rk3588_vop_data = {
 	.funcs = &rockchip_vop2_funcs,
 	.data = &rk3588_vop,
 };
+#endif
 
 static const struct udevice_id rockchip_vop_ids[] = {
 	{
@@ -210,7 +214,9 @@ static const struct udevice_id rockchip_vop_ids[] = {
 	}, {
 		.compatible = "rockchip,rk3506-vop",
 		.data = (ulong)&rk3506_vop_data,
-	}, {
+	},
+#ifdef CONFIG_ROCKCHIP_VOP2
+	{
 		.compatible = "rockchip,rk3528-vop",
 		.data = (ulong)&rk3528_vop_data,
 	}, {
@@ -222,13 +228,19 @@ static const struct udevice_id rockchip_vop_ids[] = {
 	}, {
 		.compatible = "rockchip,rk3576-vop",
 		.data = (ulong)&rk3576_vop_data,
-	}, {
+	},
+#endif
+	{
 		.compatible = "rockchip,rk3576-vop-lit",
 		.data = (ulong)&rk3576_vop_lit_data,
-	}, {
+	},
+#ifdef CONFIG_ROCKCHIP_VOP2
+	{
 		.compatible = "rockchip,rk3588-vop",
 		.data = (ulong)&rk3588_vop_data,
-	}, { }
+	},
+#endif
+	{ }
 };
 
 static int rockchip_vop_probe(struct udevice *dev)
