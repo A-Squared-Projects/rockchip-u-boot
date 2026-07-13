@@ -41,7 +41,7 @@ TOOLCHAIN_ARM32=../prebuilts/gcc/linux-x86/arm/gcc-linaro-6.3.1-2017.05-x86_64_a
 TOOLCHAIN_ARM64=../prebuilts/gcc/linux-x86/aarch64/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin
 
 ########################################### User not touch #############################################
-BIN_PATH_FIXUP="--replace tools/rk_tools/ ./"
+BIN_PATH_FIXUP=""
 RKTOOLS=./tools
 
 # Declare global INI file searching index name for every chip, update in select_chip_info()
