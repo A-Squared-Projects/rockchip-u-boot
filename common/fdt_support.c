@@ -21,6 +21,7 @@
 #include <linux/ctype.h>
 #include <linux/libfdt.h>
 #include <linux/types.h>
+#include <boot_rkimg.h>
 
 /**
  * fdt_getprop_u32_default_node - Return a node's property or a default
@@ -329,6 +330,15 @@ int fdt_chosen(void *fdt)
 #else
 				env_update("bootargs", bootargs);
 #endif
+
+                /* Update root= */
+                if( NULL != g_firefly_choose_rootfs && strlen(g_firefly_choose_rootfs) > 0 ){
+                    char choose_rootfs[50] = {0};
+                    snprintf(choose_rootfs, 50 , "root=PARTLABEL=%s", g_firefly_choose_rootfs);
+                    env_update("bootargs", choose_rootfs);
+                    printf("set bootargs : %s\n", choose_rootfs);
+                }
+
 #ifdef CONFIG_MTD_BLK
 				char *mtd_par_info = mtd_part_parse();
 

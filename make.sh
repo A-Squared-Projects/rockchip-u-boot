@@ -661,7 +661,12 @@ pack_spl_loader_image()
 
 pack_loader_image()
 {
-	local mode=$1 files ini=${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL.ini
+	TARGET_RKBOOT_INI=${RK_RKBOOT_INI}
+	if [ "${TARGET_RKBOOT_INI}" == "RK3308MINIALL_UART4" ];then
+		local mode=$1 files ini=${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_UART4.ini
+	else
+		local mode=$1 files ini=${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL.ini
+	fi
 
 	if [ "$FILE" != "" ]; then
 		ini=$FILE;

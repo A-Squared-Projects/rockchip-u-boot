@@ -25,6 +25,8 @@
 #define BOOTLOADER_MESSAGE_OFFSET_IN_MISC	(16 * 1024)
 #define BOOTLOADER_MESSAGE_BLK_OFFSET		(BOOTLOADER_MESSAGE_OFFSET_IN_MISC >> 9)
 
+char g_firefly_choose_rootfs[20] = {0};
+
 DECLARE_GLOBAL_DATA_PTR;
 
 struct bootloader_message {
@@ -457,6 +459,12 @@ fallback:
 		boot_mode = BOOT_MODE_RECOVERY;
 		clear_boot_reg = 1;
 	} else {
+
+        if (bmsg && !strcmp(bmsg->command, "boot-from-choose-rootfs")){
+            memset(g_firefly_choose_rootfs, 0, sizeof(g_firefly_choose_rootfs));
+            strncpy(g_firefly_choose_rootfs, bmsg->recovery, strlen(bmsg->recovery));
+        }
+
 		switch (reg_boot_mode) {
 		case BOOT_NORMAL:
 			printf("boot mode: normal\n");

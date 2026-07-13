@@ -59,6 +59,24 @@ struct rockchip_panel_plat {
 	struct rockchip_panel_cmds *off_cmds;
 };
 
+struct pwrctr {
+	char name[32];
+	struct gpio_desc gpio;
+	int atv_val;
+	int delay;
+};
+
+struct rockchip_pwrctr_list {
+	struct list_head list;
+	struct pwrctr pc;
+};
+
+struct rockchip_pwrctr {
+	struct list_head pclist_head;
+	int debug;
+	bool node_found;
+};
+
 struct rockchip_panel_priv {
 	bool prepared;
 	bool enabled;
@@ -66,6 +84,9 @@ struct rockchip_panel_priv {
 	struct udevice *backlight;
 	struct gpio_desc enable_gpio;
 	struct gpio_desc reset_gpio;
+
+	struct udevice *dev;
+	struct rockchip_pwrctr pwrctr;
 
 	int cmd_type;
 	struct gpio_desc spi_sdi_gpio;
@@ -125,6 +146,66 @@ static int rockchip_panel_parse_cmds(const u8 *data, int length,
 		desc->payload = buf;
 		buf += header->payload_length;
 		length -= header->payload_length;
+	}
+
+	return 0;
+}
+
+int panel_simple_dsi_parse_pclist(struct rockchip_panel_priv *panel)
+{
+	struct rockchip_pwrctr *pwrctr = &(panel->pwrctr);
+	struct list_head *pclist_head = &(pwrctr->pclist_head);
+	struct rockchip_pwrctr_list *pclist;
+	ofnode root, child;
+	int ret;
+
+	root = dev_read_subnode(panel->dev, "power_ctr");
+	if (!ofnode_valid(root)) {
+		pwrctr->node_found = false;
+		dev_dbg(panel->dev, "failed to find power_ctr node\n");
+		return 0;
+	} else {
+		pwrctr->node_found = true;
+	}
+	pwrctr->debug = ofnode_read_u32_default(root, "rockchip,debug", -ENODATA);
+
+	INIT_LIST_HEAD(pclist_head);
+
+	ofnode_for_each_subnode(child, root) {
+		if (!ofnode_valid(child))
+			continue;
+		pclist = kmalloc(sizeof(*pclist), GFP_KERNEL);
+		if (!pclist) {
+			printk("ERR:%s out of memory\n", __func__);
+			return -ENOMEM;
+		}
+
+		strncpy(pclist->pc.name, ofnode_get_name(child), sizeof(pclist->pc.name));
+
+		ret = gpio_request_by_name_nodev(child, "gpios", 0,
+					&pclist->pc.gpio, GPIOD_IS_OUT);
+		if (ret != 0) {
+			dev_err(panel->dev, "%s request gpio\n",
+					pclist->pc.name);
+			return ret;
+		}
+
+		if (!dm_gpio_is_valid(&pclist->pc.gpio)) {
+			dev_err(panel->dev, "%s ivalid gpio\n",
+					pclist->pc.name);
+			return ret;
+		}
+
+		if (pclist->pc.gpio.flags & GPIOD_ACTIVE_LOW)
+			pclist->pc.atv_val = 0;
+		else
+			pclist->pc.atv_val = 1;
+		pclist->pc.delay = ofnode_read_u32_default(child, "rockchip,delay", -ENODATA);
+		if (pwrctr->debug > 0)
+			printk("%s: atv_val=%d, delay=%d\n", pclist->pc.name,
+				pclist->pc.atv_val, pclist->pc.delay);
+
+		list_add_tail(&pclist->list, pclist_head);
 	}
 
 	return 0;
@@ -259,6 +340,11 @@ static void panel_simple_prepare(struct rockchip_panel *panel)
 	struct rockchip_panel_plat *plat = dev_get_platdata(panel->dev);
 	struct rockchip_panel_priv *priv = dev_get_priv(panel->dev);
 	struct mipi_dsi_device *dsi = dev_get_parent_platdata(panel->dev);
+	struct rockchip_pwrctr *pwrctr = &(priv->pwrctr);
+	struct list_head *pclist_head = &(pwrctr->pclist_head);
+	struct list_head *pos;
+	struct rockchip_pwrctr_list *pclist;
+	struct pwrctr *pc;
 	int ret;
 
 	if (priv->prepared)
@@ -278,6 +364,17 @@ static void panel_simple_prepare(struct rockchip_panel *panel)
 
 	if (plat->delay.reset)
 		mdelay(plat->delay.reset);
+
+	if (priv->pwrctr.node_found && !list_empty(pclist_head)) {
+		list_for_each(pos, pclist_head) {
+			pclist = list_entry(pos, struct rockchip_pwrctr_list,
+					list);
+			pc = &pclist->pc;
+
+			dm_gpio_set_value(&pc->gpio, 1);
+			mdelay(pc->delay);
+		}
+	}
 
 	if (dm_gpio_is_valid(&priv->reset_gpio))
 		dm_gpio_set_value(&priv->reset_gpio, 0);
@@ -454,6 +551,8 @@ static int rockchip_panel_probe(struct udevice *dev)
 	int ret;
 	const char *cmd_type;
 
+	priv->dev = dev;
+	panel_simple_dsi_parse_pclist(priv);
 	ret = gpio_request_by_name(dev, "enable-gpios", 0,
 				   &priv->enable_gpio, GPIOD_IS_OUT);
 	if (ret && ret != -ENOENT) {

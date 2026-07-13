@@ -21,6 +21,8 @@ enum _boot_mode {
 	BOOT_MODE_UNDEFINE,
 };
 
+extern char g_firefly_choose_rootfs[20];
+
 #define PART_MISC			"misc"
 #define PART_KERNEL			"kernel"
 #define PART_BOOT			"boot"
