@@ -1,0 +1,62 @@
+name: uboot
+
+on:
+  push:
+    branches:
+      - rithum-next
+    tags:
+      - 'rithum-uboot-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # rockchip-linux/rkbin commit providing tools/loaderimage. Pinned so the
+  # image header (including js_hash) is packed byte-identically every run.
+  RKBIN_REV: ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
+  # sha256 of the official Arm Legacy Linaro toolchain tarball (see ci/Dockerfile).
+  TC_SHA256: 926b791cd689e8573c3cd912d10e30b7d12a08bb16b9b9eaf598e2074052dc5f
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch rkbin loaderimage (sparse, pinned)
+        run: |
+          git clone --filter=blob:none --no-checkout \
+              https://github.com/rockchip-linux/rkbin.git "${GITHUB_WORKSPACE}/../rkbin"
+          git -C "${GITHUB_WORKSPACE}/../rkbin" sparse-checkout set tools
+          git -C "${GITHUB_WORKSPACE}/../rkbin" checkout "${RKBIN_REV}"
+
+      - name: Build container
+        run: docker build --build-arg TC_SHA256="${TC_SHA256}" -t rithum-uboot-build ci
+
+      - name: Build uboot.img
+        run: |
+          docker run --rm \
+              -u "$(id -u):$(id -g)" \
+              -e HOME=/tmp \
+              -v "${GITHUB_WORKSPACE}:/src" \
+              -v "$(realpath "${GITHUB_WORKSPACE}/../rkbin"):/rkbin:ro" \
+              -e LOADERIMAGE=/rkbin/tools/loaderimage \
+              -w /src \
+              rithum-uboot-build ci/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uboot-${{ github.ref_name }}-${{ github.sha }}
+          path: |
+            uboot.img
+            sha256sums.txt
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" uboot.img sha256sums.txt \
+              --title "${GITHUB_REF_NAME}" \
+              --notes "uboot.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. Flash to the uboot partition only; trust/loader stay on factory versions."
