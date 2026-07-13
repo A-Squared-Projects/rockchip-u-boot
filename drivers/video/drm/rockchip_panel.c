@@ -518,11 +518,10 @@ static int rockchip_panel_probe(struct udevice *dev)
 		priv->cmd_type = get_panel_cmd_type(cmd_type);
 
 	if (priv->cmd_type == CMD_TYPE_SPI) {
-		ofnode parent = ofnode_get_parent(dev->node);
+		struct udevice *spi = dev_get_parent(dev);
 
-		if (ofnode_valid(parent)) {
+		if (spi && device_get_uclass_id(spi) == UCLASS_SPI) {
 			struct dm_spi_slave_platdata *plat = dev_get_parent_platdata(dev);
-			struct udevice *spi = dev_get_parent(dev);
 
 			if (spi->seq < 0) {
 				printf("%s: Failed to get spi bus num\n", __func__);
