@@ -11,6 +11,15 @@ menuconfig DRM_ROCKCHIP
 	  This driver supports the on-chip video output device, and targets the
 	  Rockchip RK3288 and RK3399.
 
+config ROCKCHIP_VOP2
+	bool "Rockchip VOP2 CRTC support (RK3528/RK3562/RK3568/RK3576/RK3588)"
+	depends on DRM_ROCKCHIP
+	default y
+	help
+	  The VOP2 display controller found on RK3528, RK3562, RK3568,
+	  RK3576 and RK3588. Can be disabled on SoCs with the original
+	  VOP (e.g. RK3308) to reduce image size.
+
 config DRM_MEM_RESERVED_SIZE_MBYTES
 	int "Size in Mega Bytes"
 	depends on DRM_ROCKCHIP
