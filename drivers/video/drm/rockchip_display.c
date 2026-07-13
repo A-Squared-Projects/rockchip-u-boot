@@ -1530,6 +1530,19 @@ static int load_bmp_logo(struct logo_info *logo, const char *bmp_name, uintptr_t
 		goto free_bmp_data;
 	}
 
+	/*
+	 * Restore the legacy loader's scanout semantics: BMP rows are kept
+	 * in file order and a bottom-up file is compensated by the VOP's
+	 * y-mirror (crtc_state->ymirror) - which silently degrades to raw
+	 * bottom-up scanout on VOPs without y-mirror support (e.g. RK3308),
+	 * a behaviour existing vendor logo assets are authored against
+	 * (pre-flipped content). Files marked BMP_PROCESSED_FLAG in the
+	 * header's reserved field are already top-down and need no mirror.
+	 * Setting libnsbmp's 'reversed' keeps the decode in file order
+	 * instead of flipping to spec top-down order.
+	 */
+	bmp.reversed = true;
+
 	if (bmp.buffer_size > MAX_IMAGE_BYTES) {
 		printf("bmp[%s] data size[%dKB] is over the limitation MAX_IMAGE_BYTES[%dKB]\n",
 			bmp_name, bmp.buffer_size / 1024, MAX_IMAGE_BYTES / 1024);
@@ -1540,7 +1553,10 @@ static int load_bmp_logo(struct logo_info *logo, const char *bmp_name, uintptr_t
 	/* fix bpp to 32 */
 	logo->bpp = 32;
 	logo->offset = 0;
-	logo->ymirror = 0;
+	if (get_unaligned_le32(bmp_data + 6) == BMP_PROCESSED_FLAG)
+		logo->ymirror = 0;
+	else
+		logo->ymirror = 1;
 	logo->width = get_unaligned_le32(&bmp.width);
 	logo->height = get_unaligned_le32(&bmp.height);
 	dst_size = logo->width * logo->height * logo->bpp >> 3;
