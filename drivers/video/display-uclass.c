@@ -50,6 +50,8 @@ int display_read_timing(struct udevice *dev, struct display_timing *timing)
 
 	if (!ops || !ops->read_edid)
 		return -ENOSYS;
+	if (!IS_ENABLED(CONFIG_I2C_EDID))
+		return -ENOSYS;
 	ret = ops->read_edid(dev, buf, sizeof(buf));
 	if (ret < 0)
 		return ret;
