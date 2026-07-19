@@ -73,22 +73,33 @@
 	"ramdisk_addr_r=0x04000000\0"
 #else
 /*
- * kernel_addr_r must sit ABOVE the OP-TEE secure carveout when BL32 is
- * present. RK3308 loads OP-TEE (BL32) at 0x200000 with TEE_RAM+TA_RAM+SHM
- * = 4 MiB (ends 0x600000); the historical AArch32 kernel_addr_r of 0x58000
- * runs the kernel straight through that region -> secure-memory fault and a
- * boot loop once OP-TEE is actually running. Mirror the ARM64 layout:
- * default to 0x680000 (above OP-TEE), and let arch/arm/mach-rockchip/board.c
- * move the kernel back down to kernel_addr_no_low_bl32_r (the historical
- * 0x58000) automatically when no BL32 is enabled, so non-OP-TEE firmware
- * boots exactly as before.
+ * kernel_addr_r must keep the kernel clear of the OP-TEE secure carveout
+ * when BL32 is present. RK3308 loads OP-TEE (BL32) at 0x200000 with
+ * TEE_RAM+TA_RAM+SHM = 4 MiB (ends 0x600000) and firewalls it.
+ *
+ * The kernel is a zImage: u-boot XIP-runs it at kernel_addr_r and it
+ * self-decompresses via CONFIG_AUTO_ZRELADDR to
+ * (kernel_addr_r & 0xf8000000) + TEXT_OFFSET. The ~7.5 MiB decompressed
+ * kernel therefore lands on the 128 MiB-aligned window containing
+ * kernel_addr_r. The historical 0x58000 (and even the ARM64 branch's
+ * 0x680000, which only works there because the ARM64 Image runs at its
+ * load address without decompressing) both mask to 0x0 -> decompress low,
+ * straight through the OP-TEE region -> secure fault / boot loop.
+ *
+ * So load the zImage on the 128 MiB boundary (0x8000000): AUTO_ZRELADDR then
+ * decompresses to ~0x8000000, well above OP-TEE. arch/arm/mach-rockchip/
+ * board.c moves kernel_addr_r back down to kernel_addr_no_low_bl32_r (the
+ * historical 0x58000) when no BL32 is enabled, so non-OP-TEE firmware (the
+ * current fleet) boots exactly as before. kernel_addr_c must stay defined
+ * (non-zero) or android_image_set_kload() picks SDRAM_BASE+0x8000 for the
+ * Image path.
  */
 #define ENV_MEM_LAYOUT_SETTINGS \
 	"scriptaddr=0x00500000\0" \
 	"pxefile_addr_r=0x00600000\0" \
 	"fdt_addr_r=0x02800000\0" \
 	"kernel_addr_no_low_bl32_r=0x00058000\0" \
-	"kernel_addr_r=0x00680000\0" \
+	"kernel_addr_r=0x08000000\0" \
 	"kernel_addr_c=0x2008000\0" \
 	"ramdisk_addr_r=0x02900000\0"
 #endif
