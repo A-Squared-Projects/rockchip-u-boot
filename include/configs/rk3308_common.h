@@ -72,11 +72,23 @@
 	"kernel_addr_c=0x02480000\0" \
 	"ramdisk_addr_r=0x04000000\0"
 #else
+/*
+ * kernel_addr_r must sit ABOVE the OP-TEE secure carveout when BL32 is
+ * present. RK3308 loads OP-TEE (BL32) at 0x200000 with TEE_RAM+TA_RAM+SHM
+ * = 4 MiB (ends 0x600000); the historical AArch32 kernel_addr_r of 0x58000
+ * runs the kernel straight through that region -> secure-memory fault and a
+ * boot loop once OP-TEE is actually running. Mirror the ARM64 layout:
+ * default to 0x680000 (above OP-TEE), and let arch/arm/mach-rockchip/board.c
+ * move the kernel back down to kernel_addr_no_low_bl32_r (the historical
+ * 0x58000) automatically when no BL32 is enabled, so non-OP-TEE firmware
+ * boots exactly as before.
+ */
 #define ENV_MEM_LAYOUT_SETTINGS \
 	"scriptaddr=0x00500000\0" \
 	"pxefile_addr_r=0x00600000\0" \
 	"fdt_addr_r=0x02800000\0" \
-	"kernel_addr_r=0x00058000\0" \
+	"kernel_addr_no_low_bl32_r=0x00058000\0" \
+	"kernel_addr_r=0x00680000\0" \
 	"kernel_addr_c=0x2008000\0" \
 	"ramdisk_addr_r=0x02900000\0"
 #endif
