@@ -93,6 +93,19 @@
  * current fleet) boots exactly as before. kernel_addr_c must stay defined
  * (non-zero) or android_image_set_kload() picks SDRAM_BASE+0x8000 for the
  * Image path.
+ *
+ * ramdisk_addr_r must ALSO sit above 0x8000000. Running the kernel at
+ * 0x8000000 makes that address the kernel's PHYS_OFFSET, so it drops every
+ * memory bank below it ("Ignoring memory range 0x600000 - 0x8000000"). A
+ * ramdisk loaded lower is then "not a memory region" and the kernel silently
+ * disables the initrd. Normal boots don't use one so they're unaffected, but
+ * recovery IS an initramfs: with its ramdisk discarded the recovery kernel
+ * falls through to the baked-in root=PARTUUID (rootfs) and boots the normal
+ * system instead of the flasher - so `updateEngine --misc=update` writes the
+ * BCB, u-boot enters recovery (RESC/boot mode: recovery), yet nothing is ever
+ * flashed and no u-boot/trust update (a recovery-only operation) can land. The
+ * old 0x2900000 was below the floor; put it at 0x0d000000, inside the online
+ * bank and clear of the kernel image, fdt, drm-logo and CMA carveouts.
  */
 #define ENV_MEM_LAYOUT_SETTINGS \
 	"scriptaddr=0x00500000\0" \
@@ -101,7 +114,7 @@
 	"kernel_addr_no_low_bl32_r=0x00058000\0" \
 	"kernel_addr_r=0x08000000\0" \
 	"kernel_addr_c=0x2008000\0" \
-	"ramdisk_addr_r=0x02900000\0"
+	"ramdisk_addr_r=0x0d000000\0"
 #endif
 
 #include <config_distro_bootcmd.h>
