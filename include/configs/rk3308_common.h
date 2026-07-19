@@ -94,18 +94,30 @@
  * (non-zero) or android_image_set_kload() picks SDRAM_BASE+0x8000 for the
  * Image path.
  *
- * ramdisk_addr_r must ALSO sit above 0x8000000. Running the kernel at
- * 0x8000000 makes that address the kernel's PHYS_OFFSET, so it drops every
- * memory bank below it ("Ignoring memory range 0x600000 - 0x8000000"). A
- * ramdisk loaded lower is then "not a memory region" and the kernel silently
- * disables the initrd. Normal boots don't use one so they're unaffected, but
- * recovery IS an initramfs: with its ramdisk discarded the recovery kernel
- * falls through to the baked-in root=PARTUUID (rootfs) and boots the normal
- * system instead of the flasher - so `updateEngine --misc=update` writes the
- * BCB, u-boot enters recovery (RESC/boot mode: recovery), yet nothing is ever
- * flashed and no u-boot/trust update (a recovery-only operation) can land. The
- * old 0x2900000 was below the floor; put it at 0x0d000000, inside the online
- * bank and clear of the kernel image, fdt, drm-logo and CMA carveouts.
+ * NB: the OP-TEE kernel now disables AUTO_ZRELADDR and fixes ZRELADDR at
+ * 0x658000 (CONFIG_PHYS_OFFSET=0x600000, the memory-reclaim change - pairs with
+ * the linux-rithum SRCREV that sets it). u-boot still XIP-loads the zImage at
+ * kernel_addr_r=0x08000000 and the decompressor relocates the output down to
+ * 0x658000, so PHYS_OFFSET is 0x600000, not 0x8000000 - the reclaimed low RAM
+ * (0x600000-0x8000000) is back.
+ *
+ * ramdisk_addr_r must be (a) above PHYS_OFFSET (0x600000) or the kernel drops
+ * the ramdisk as "not a memory region" and disables the initrd, and (b) well
+ * below u-boot's own top-of-DRAM footprint. Recovery IS an initramfs: with its
+ * ramdisk discarded the recovery kernel falls through to the baked-in
+ * root=PARTUUID (rootfs) and boots the normal system instead of the flasher -
+ * so updateEngine writes the BCB, u-boot enters recovery, yet nothing is ever
+ * flashed and no u-boot/trust update (recovery-only) can land.
+ *
+ * Put it LOW at 0x03000000 (48 MiB): above the decompressed kernel (ends
+ * ~0xd90000) and fdt (0x02800000), below the zImage load (0x08000000). It must
+ * be low, NOT high: u-boot relocates itself to the top of detected DRAM with a
+ * 10 MiB CONFIG_SYS_MALLOC_LEN arena below it, so on the 256 MiB RS (u-boot
+ * ~0x0dc13000) the earlier 0x0d000000 (208 MiB) landed inside u-boot's malloc
+ * and corrupted the ramdisk - it only survived on the 512 MiB RSP because there
+ * u-boot sits at ~476 MiB, far above 208 MiB. The reclaim (PHYS_OFFSET low)
+ * is what lets it go low again; before it, the ramdisk was forced above
+ * 0x8000000, which is exactly what broke the 256 MiB part.
  */
 #define ENV_MEM_LAYOUT_SETTINGS \
 	"scriptaddr=0x00500000\0" \
@@ -114,7 +126,7 @@
 	"kernel_addr_no_low_bl32_r=0x00058000\0" \
 	"kernel_addr_r=0x08000000\0" \
 	"kernel_addr_c=0x2008000\0" \
-	"ramdisk_addr_r=0x0d000000\0"
+	"ramdisk_addr_r=0x03000000\0"
 #endif
 
 #include <config_distro_bootcmd.h>
