@@ -29,7 +29,8 @@ jobs:
           git clone --filter=blob:none --no-checkout \
               https://github.com/rockchip-linux/rkbin.git "${GITHUB_WORKSPACE}/../rkbin"
           git -C "${GITHUB_WORKSPACE}/../rkbin" sparse-checkout set --no-cone \
-              '/tools/*' '/RKTRUST/*' '/bin/rk33/rk3308_bl31*'
+              '/tools/*' '/RKTRUST/*' \
+              '/bin/rk33/rk3308_bl31*' '/bin/rk33/rk3308_bl32*'
           git -C "${GITHUB_WORKSPACE}/../rkbin" checkout "${RKBIN_REV}"
 
       - name: Build container
@@ -61,4 +62,4 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" uboot.img trust.img sha256sums.txt \
               --title "${GITHUB_REF_NAME}" \
-              --notes "uboot.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. Flash uboot.img to the uboot partition. trust.img (BL31 from pinned rkbin) is provided for bench testing and is NOT flashed to the fleet by default; the loader stays on its factory version."
+              --notes "uboot.img + trust.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. Flash uboot.img to the uboot partition, trust.img to the trust partition. trust.img packs BL31 + BL32 (OP-TEE 3.13.0) per ci/RK3308AARCH32TRUST.ini; it requires a kernel that reserves the 0x200000-0x600000 secure-memory carveout - ship the two together. The first-stage loader stays on its factory version (USB-maskrom only)."

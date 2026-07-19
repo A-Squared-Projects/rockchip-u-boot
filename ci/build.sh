@@ -62,18 +62,23 @@ echo "u-boot.bin: ${BIN} / ${MAX} bytes ($(( MAX - BIN )) spare)"
 
 "${LOADERIMAGE}" --pack --uboot u-boot.bin uboot.img "${LOAD_ADDR}" --size "${U_KB}" "${U_NUM}"
 
-# trust.img (BL31) from the pinned rkbin, packed the way make.sh's
-# ARM64_TRUSTZONE path does for this config. Deterministic: pure
-# function of the rkbin checkout. Not flashed by default - the fleet
-# runs the factory trust - built here so a current, reproducible BL31
-# is ready for bench testing and the kernel-replacement work.
+# trust.img packed the way make.sh's ARM64_TRUSTZONE path does for this
+# config. Deterministic: pure function of the trust ini + rkbin blobs.
+# The trust ini is taken from ci/<name> in this repo if present (so the
+# trust composition - notably BL32/OP-TEE enablement - is reviewable and
+# pinned in-tree), else from the pinned rkbin's stock RKTRUST/<name>.
+# PATH= entries inside resolve relative to the rkbin checkout
+# (trust_merger's cwd), so they stay bin/rk33/... either way.
 TRUST_INI=$(sed -n 's/^CONFIG_TRUST_INI="\(.*\)"/\1/p' .config)
 T_KB=$(sed -n 's/^CONFIG_TRUST_SIZE_KB=//p' .config)
 T_NUM=$(sed -n 's/^CONFIG_TRUST_NUM=//p' .config)
 T_SHA=$(sed -n 's/^CONFIG_TRUST_SHA_MODE=//p' .config)
 T_RSA=$(sed -n 's/^CONFIG_TRUST_RSA_MODE=//p' .config)
 SRC=$(pwd)
-(cd "${RKBIN}" && ./tools/trust_merger "RKTRUST/${TRUST_INI}" \
+TRUST_INI_ARG="${SRC}/ci/${TRUST_INI}"
+[ -f "${TRUST_INI_ARG}" ] || TRUST_INI_ARG="RKTRUST/${TRUST_INI}"
+echo "trust ini: ${TRUST_INI_ARG}"
+(cd "${RKBIN}" && ./tools/trust_merger "${TRUST_INI_ARG}" \
 	--size "${T_KB:-512}" "${T_NUM:-2}" \
 	--sha "${T_SHA:-3}" --rsa "${T_RSA:-3}" \
 	&& mv trust.img "${SRC}/trust.img")
