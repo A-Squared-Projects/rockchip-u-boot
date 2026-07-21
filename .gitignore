@@ -6,6 +6,8 @@
 # Normal rules
 #
 .*
+# ...but git-crypt's own metadata (GPG-wrapped keys) must be tracked.
+!.git-crypt
 *.o
 *.o.*
 *.a
