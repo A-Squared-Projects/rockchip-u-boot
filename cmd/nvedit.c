@@ -403,6 +403,43 @@ static int env_replace(const char *varname, const char *substr,
 
 #define ARGS_ITEM_NUM	50
 
+/*
+ * strtok_r() on spaces, except a double-quoted "..." span is kept whole so a
+ * command-line param whose value contains spaces - e.g.
+ * dm-mod.create="0 <n> verity 1 <dev> <dev> ... <roothash> <salt>" for
+ * verified boot - is returned as a single token instead of being split at the
+ * inner spaces (and its repeated bare tokens de-duped by env_append). Quotes
+ * are preserved in the returned token. Plain (unquoted) args tokenize exactly
+ * as before, so this is a no-op for every existing caller.
+ */
+static char *env_strtok_quoted(char *str, char **save)
+{
+	char *s = str ? str : *save;
+	char *tok;
+	bool in_q = false;
+
+	if (!s)
+		return NULL;
+	while (*s == ' ')
+		s++;
+	if (!*s) {
+		*save = NULL;
+		return NULL;
+	}
+	tok = s;
+	for (; *s; s++) {
+		if (*s == '"')
+			in_q = !in_q;
+		else if (*s == ' ' && !in_q) {
+			*s = '\0';
+			*save = s + 1;
+			return tok;
+		}
+	}
+	*save = NULL;
+	return tok;
+}
+
 int env_update_filter(const char *varname, const char *varvalue,
 		      const char *ignore)
 {
@@ -413,6 +450,7 @@ int env_update_filter(const char *varname, const char *varvalue,
 	char *v_string_tok, *v_item_tok = NULL;
 	char *a_item, *a_items[ARGS_ITEM_NUM] = { NULL };
 	char *v_item, *v_items[ARGS_ITEM_NUM] = { NULL };
+	char *a_save = NULL, *v_save = NULL;
 	bool match = false;
 	int i = 0, j = 0;
 
@@ -445,25 +483,25 @@ int env_update_filter(const char *varname, const char *varvalue,
 	}
 
 	/* Splite varargs into items containing "=" by the space */
-	a_item = strtok(a_string_tok, " ");
+	a_item = env_strtok_quoted(a_string_tok, &a_save);
 	while (a_item && i < ARGS_ITEM_NUM) {
 		debug("%s: [a_item %d]: %s\n", __func__, i, a_item);
 		if (strstr(a_item, "="))
 			a_items[i++] = a_item;
-		a_item = strtok(NULL, " ");
+		a_item = env_strtok_quoted(NULL, &a_save);
 	}
 
 	/*
 	 * Splite varvalue into items containing "=" by the space.
 	 * parse varvalue title, eg: "bootmode=emmc", title is "bootmode"
 	 */
-	v_item = strtok(v_string_tok, " ");
+	v_item = env_strtok_quoted(v_string_tok, &v_save);
 	while (v_item && j < ARGS_ITEM_NUM) {
 		debug("%s: <v_item %d>: %s ", __func__, j, v_item);
 
 		/* filter ignore string */
 		if (ignore && strstr(v_item, ignore)) {
-			v_item = strtok(NULL, " ");
+			v_item = env_strtok_quoted(NULL, &v_save);
 			debug("...ignore\n");
 			continue;
 		}
@@ -476,7 +514,7 @@ int env_update_filter(const char *varname, const char *varvalue,
 			env_append(varname, v_item);
 		}
 
-		v_item = strtok(NULL, " ");
+		v_item = env_strtok_quoted(NULL, &v_save);
 	}
 
 	/* For every v_item, search its title */
