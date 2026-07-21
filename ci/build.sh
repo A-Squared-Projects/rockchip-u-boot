@@ -78,6 +78,23 @@ SRC=$(pwd)
 TRUST_INI_ARG="${SRC}/ci/${TRUST_INI}"
 [ -f "${TRUST_INI_ARG}" ] || TRUST_INI_ARG="RKTRUST/${TRUST_INI}"
 echo "trust ini: ${TRUST_INI_ARG}"
+
+# OEM key: replace the world-known Rockchip dev-kit public key baked into BL32
+# with ours, so only TAs signed with our matching private key load (see the TA
+# recipes in meta-rithum). change_puk is an x86_64 glibc binary (libc/libdl/libz
+# - all present) that edits the .bin in place; the rkbin sparse checkout is
+# fresh + writable each run. Verify it actually changed the blob: a silent no-op
+# would ship a stock-key trust.img that rejects our re-signed TAs.
+BL32_REL=$(sed -n 's/^PATH=\(.*bl32.*\)/\1/Ip' "${TRUST_INI_ARG}" | head -1)
+BL32="${RKBIN}/${BL32_REL}"
+[ -f "${BL32}" ] || { echo "ERROR: BL32 not found at ${BL32}" >&2; exit 1; }
+BL32_BEFORE=$(sha256sum "${BL32}" | cut -d' ' -f1)
+chmod +x "${SRC}/ci/change_puk"
+"${SRC}/ci/change_puk" --teebin "${BL32}" --key "${SRC}/ci/oem_privkey.pem"
+BL32_AFTER=$(sha256sum "${BL32}" | cut -d' ' -f1)
+[ "${BL32_BEFORE}" != "${BL32_AFTER}" ] || { echo "ERROR: change_puk did not modify BL32 - OEM key not applied" >&2; exit 1; }
+echo "change_puk: baked our OEM public key into ${BL32_REL}"
+
 (cd "${RKBIN}" && ./tools/trust_merger "${TRUST_INI_ARG}" \
 	--size "${T_KB:-512}" "${T_NUM:-2}" \
 	--sha "${T_SHA:-3}" --rsa "${T_RSA:-3}" \

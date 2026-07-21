@@ -36,6 +36,18 @@ jobs:
       - name: Build container
         run: docker build --build-arg TC_SHA256="${TC_SHA256}" -t rithum-uboot-build ci
 
+      - name: Provision OEM TA-signing key (from encrypted secret)
+        # change_puk (in ci/build.sh) bakes this key's PUBLIC half into BL32 so
+        # only TAs signed with the matching private key load. The private key is
+        # held only as the OEM_PRIVKEY repo secret (this repo is PUBLIC - it must
+        # never be committed); materialise it into the workspace for the
+        # container build, and it's gitignored + gone when the runner is torn
+        # down. A build without the secret (e.g. a fork PR) fails change_puk's
+        # "did not modify BL32" guard rather than silently shipping a stock key.
+        run: |
+          printf '%s' "${{ secrets.OEM_PRIVKEY }}" > ci/oem_privkey.pem
+          chmod 600 ci/oem_privkey.pem
+
       - name: Build uboot.img
         run: |
           docker run --rm \
