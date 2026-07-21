@@ -36,17 +36,20 @@ jobs:
       - name: Build container
         run: docker build --build-arg TC_SHA256="${TC_SHA256}" -t rithum-uboot-build ci
 
-      - name: Provision OEM TA-signing key (from encrypted secret)
-        # change_puk (in ci/build.sh) bakes this key's PUBLIC half into BL32 so
-        # only TAs signed with the matching private key load. The private key is
-        # held only as the OEM_PRIVKEY repo secret (this repo is PUBLIC - it must
-        # never be committed); materialise it into the workspace for the
-        # container build, and it's gitignored + gone when the runner is torn
-        # down. A build without the secret (e.g. a fork PR) fails change_puk's
-        # "did not modify BL32" guard rather than silently shipping a stock key.
+      - name: Unlock OEM TA-signing key (git-crypt)
+        # ci/oem_privkey.pem is committed git-crypt-ENCRYPTED (safe in this
+        # public repo). change_puk (ci/build.sh) bakes its PUBLIC half into BL32
+        # so only TAs signed with the matching private key load. Unlock with the
+        # symmetric git-crypt key held as the GIT_CRYPT_KEY repo secret; the
+        # decrypted key lives only in the ephemeral runner. A build without the
+        # secret (e.g. a fork PR) leaves the file encrypted, so change_puk's
+        # "did not modify BL32" guard fails rather than shipping a stock key.
         run: |
-          printf '%s' "${{ secrets.OEM_PRIVKEY }}" > ci/oem_privkey.pem
-          chmod 600 ci/oem_privkey.pem
+          sudo apt-get update && sudo apt-get install -y git-crypt
+          printf '%s' "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > "${RUNNER_TEMP}/gitcrypt.key"
+          git-crypt unlock "${RUNNER_TEMP}/gitcrypt.key"
+          rm -f "${RUNNER_TEMP}/gitcrypt.key"
+          grep -q 'BEGIN' ci/oem_privkey.pem || { echo "ERROR: git-crypt unlock did not decrypt the OEM key" >&2; exit 1; }
 
       - name: Build uboot.img
         run: |

@@ -87,4 +87,3 @@ GTAGS
 *.orig
 *~
 \#*#
-ci/oem_privkey.pem
