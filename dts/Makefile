@@ -35,13 +35,13 @@ endif
 
 quiet_cmd_fdtgrep = FDTGREP $@
       cmd_fdtgrep = $(objtree)/tools/fdtgrep $(fdtgrep_props) -RT $< \
-                -n /chosen -n /config -O dtb | \
+                -n /chosen -n /config -n /signature -n /signature/key-boot -O dtb | \
         $(objtree)/tools/fdtgrep -r -O dtb - -o $@ \
                 $(addprefix -P ,$(subst $\",,$(CONFIG_OF_SPL_REMOVE_PROPS)))
 
 quiet_cmd_fdtgrep_uboot = FDTGREP $@
       cmd_fdtgrep_uboot = $(objtree)/tools/fdtgrep $(fdtgrep_props) -RT $< \
-		-n /chosen -n /config -O dtb | \
+		-n /chosen -n /config -n /signature -n /signature/key-boot -O dtb | \
 	$(objtree)/tools/fdtgrep -r -O dtb - -o $@ \
 		$(addprefix -P ,$(subst $\",,$(CONFIG_OF_U_BOOT_REMOVE_PROPS)))
 
