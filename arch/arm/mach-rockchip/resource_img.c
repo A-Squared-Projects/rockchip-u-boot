@@ -456,16 +456,27 @@ int rockchip_read_resource_file(void *buf, const char *name, int blk_offset, int
 	if (len <= 0 || len > f->size)
 		len = f->size;
 
+	/*
+	 * Derive blksz from the boot device up front, for BOTH branches. The
+	 * in_ram entries were laid out by resource_setup_list() using the real
+	 * dev_desc->blksz, so reading them back must use the same value. The
+	 * original code read blksz from an uninitialised 'desc' in the in_ram
+	 * branch (desc is only assigned in the else branch below): a non-NULL
+	 * stack-garbage pointer yields a wrong blksz, so pos lands at the wrong
+	 * offset and the resource (e.g. the boot logo, the first user of this
+	 * in_ram path via the signed-FIT resource route) is copied from junk.
+	 */
+	desc = rockchip_get_bootdev();
+	blksz = desc ? desc->blksz : 512;
+
 	if (f->in_ram) {
-		blksz = desc ? desc->blksz : 512;
 		pos = f->blk_start + (f->blk_offset + blk_offset) * blksz;
 		memcpy(buf, (char *)pos, len);
 	} else {
-		desc = rockchip_get_bootdev();
 		if (!desc)
 			return -ENODEV;
 
-		blk_cnt = DIV_ROUND_UP(len, desc->blksz);
+		blk_cnt = DIV_ROUND_UP(len, blksz);
 		if (blk_dread(desc,
 			      f->blk_start + f->blk_offset + blk_offset,
 			      blk_cnt, buf) != blk_cnt)
