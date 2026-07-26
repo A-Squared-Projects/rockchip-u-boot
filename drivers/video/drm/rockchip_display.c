@@ -52,7 +52,21 @@
 #define RK_BLK_SIZE 512
 #define BMP_PROCESSED_FLAG 8399
 #define BYTES_PER_PIXEL sizeof(uint32_t)
-#define MAX_IMAGE_BYTES (8 * 1024 * 1024)
+/*
+ * Upper bound on a logo BMP file, and the size of the scratch buffer
+ * rockchip_read_bmp() mallocs to hold it. Was 8 MiB, which is fine on the
+ * legacy Android-boot path (the resource is read block-by-block from flash,
+ * nothing persistent), but overflows the 10 MiB CONFIG_SYS_MALLOC_LEN heap
+ * on the signed-FIT boot path: there fit_image_init_resource() loads the
+ * whole resource.img into a ~1.4 MiB buffer that stays allocated (it backs
+ * the in_ram resource entries), so 8 MiB + 1.4 MiB leaves only ~636 KiB -
+ * less than the 900 KiB (480x480x4) bitmap_create() then needs. calloc()
+ * returns NULL, bmp_analyse() reports BMP_INSUFFICIENT_MEMORY, and the logo
+ * silently fails with "failed to parse bmp:logo.bmp header" (a misleading
+ * message - the header parsed fine). 2 MiB comfortably holds any 480x480
+ * logo (<=900 KiB even at 32bpp) and leaves ~5.7 MiB of heap slack.
+ */
+#define MAX_IMAGE_BYTES (2 * 1024 * 1024)
 
 DECLARE_GLOBAL_DATA_PTR;
 static LIST_HEAD(rockchip_display_list);
