@@ -270,6 +270,14 @@ static int fit_image_verify_sig(const void *fit, int image_noffset,
 	fdt_for_each_subnode(noffset, fit, image_noffset) {
 		const char *name = fit_get_name(fit, noffset, NULL);
 
+		/*
+		 * We don't support this since libfdt considers names with the
+		 * same root but different @ suffix to be equal
+		 */
+		if (strchr(name, '@')) {
+			err_msg = "Node name contains @";
+			goto error;
+		}
 		if (!strncmp(name, FIT_SIG_NODENAME,
 			     strlen(FIT_SIG_NODENAME))) {
 			ret = fit_image_check_sig(fit, noffset, data,
@@ -469,6 +477,14 @@ static int fit_config_verify_sig(const void *fit, int conf_noffset,
 	fdt_for_each_subnode(noffset, fit, conf_noffset) {
 		const char *name = fit_get_name(fit, noffset, NULL);
 
+		/*
+		 * We don't support this since libfdt considers names with the
+		 * same root but different @ suffix to be equal
+		 */
+		if (strchr(name, '@')) {
+			err_msg = "Node name contains @";
+			goto error;
+		}
 		if (!strncmp(name, FIT_SIG_NODENAME,
 			     strlen(FIT_SIG_NODENAME))) {
 			ret = fit_config_check_sig(fit, noffset, sig_offset,
