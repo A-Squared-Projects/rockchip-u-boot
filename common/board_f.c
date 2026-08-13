@@ -778,10 +778,19 @@ static int initf_bootstage(void)
 static int initf_console_record(void)
 {
 #if defined(CONFIG_CONSOLE_RECORD) && CONFIG_VAL(SYS_MALLOC_F_LEN)
-	return console_record_init();
-#else
-	return 0;
+	/*
+	 * Best-effort: the record buffers need not fit the early-malloc pool
+	 * (CONFIG_CONSOLE_RECORD_OUT_SIZE may exceed SYS_MALLOC_F_LEN, e.g.
+	 * a 32 KiB record over the 16 KiB rk3308 pool). Recording is only
+	 * enabled from board_r's initr_console_record, which re-runs
+	 * console_record_init() against the relocated heap - so a failure
+	 * here costs nothing but the (never-enabled) pre-reloc capture.
+	 * Returning the error would hang board_f before DDR/display init:
+	 * exactly how the first CONSOLE_RECORD=y android build bricked.
+	 */
+	console_record_init();
 #endif
+	return 0;
 }
 
 static int initf_dm(void)
