@@ -52,15 +52,26 @@ jobs:
           grep -q 'BEGIN' ci/oem_privkey.pem || { echo "ERROR: git-crypt unlock did not decrypt the OEM key" >&2; exit 1; }
 
       - name: Build uboot.img
+        # Two flavors from the same source, one tag. The android flavor first,
+        # renamed aside; the secure flavor last, keeping the canonical
+        # uboot.img/trust.img/sha256sums.txt names existing consumers pin.
         run: |
-          docker run --rm \
-              -u "$(id -u):$(id -g)" \
-              -e HOME=/tmp \
-              -v "${GITHUB_WORKSPACE}:/src" \
-              -v "$(realpath "${GITHUB_WORKSPACE}/../rkbin"):/rkbin" \
-              -e RKBIN=/rkbin \
-              -w /src \
-              rithum-uboot-build ci/build.sh
+          build() {
+            docker run --rm \
+                -u "$(id -u):$(id -g)" \
+                -e HOME=/tmp \
+                -v "${GITHUB_WORKSPACE}:/src" \
+                -v "$(realpath "${GITHUB_WORKSPACE}/../rkbin"):/rkbin" \
+                -e RKBIN=/rkbin \
+                -e BOARD="$1" \
+                -w /src \
+                rithum-uboot-build ci/build.sh
+          }
+          build rithum-rk3308-aarch32-android
+          mv uboot.img uboot-android.img
+          mv trust.img trust-bl31.img
+          sha256sum uboot-android.img trust-bl31.img > sha256sums-android.txt
+          build rithum-rk3308-aarch32
 
       - uses: actions/upload-artifact@v4
         with:
@@ -69,12 +80,17 @@ jobs:
             uboot.img
             trust.img
             sha256sums.txt
+            uboot-android.img
+            trust-bl31.img
+            sha256sums-android.txt
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" uboot.img trust.img sha256sums.txt \
+          gh release create "${GITHUB_REF_NAME}" \
+              uboot.img trust.img sha256sums.txt \
+              uboot-android.img trust-bl31.img sha256sums-android.txt \
               --title "${GITHUB_REF_NAME}" \
-              --notes "uboot.img + trust.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. Flash uboot.img to the uboot partition, trust.img to the trust partition. trust.img packs BL31 + BL32 (OP-TEE 3.13.0) per ci/RK3308AARCH32TRUST.ini; it requires a kernel that reserves the 0x200000-0x600000 secure-memory carveout - ship the two together. The first-stage loader stays on its factory version (USB-maskrom only)."
+              --notes "Two flavors of uboot.img + trust.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. SECURE (uboot.img + trust.img, the main line): boots signed FIT only (CONFIG_FIT_SIGNATURE); trust.img packs BL31 + BL32 (OP-TEE 3.13.0) per ci/RK3308AARCH32TRUST.ini and requires a kernel that reserves the 0x200000-0x600000 secure-memory carveout - ship the two together. ANDROID (uboot-android.img + trust-bl31.img, the wrynose line): full boot cascade (Android bootimg + unsigned FIT), BL31-only trust per ci/RK3308AARCH32TRUST-BL31.ini, no secure world. Flash uboot* to the uboot partition, trust* to the trust partition, always as a matched pair from the same flavor. The first-stage loader stays on its factory version (USB-maskrom only)."
