@@ -14,6 +14,10 @@
 #include <fdt_support.h>
 #include <errno.h>
 #include <image.h>
+#ifdef CONFIG_CONSOLE_RECORD
+#include <malloc.h>
+#include <membuff.h>
+#endif
 #include <linux/libfdt.h>
 #include <mapmem.h>
 #include <asm/io.h>
@@ -614,6 +618,47 @@ __weak int arch_fixup_fdt(void *blob)
 	return 0;
 }
 
+#ifdef CONFIG_CONSOLE_RECORD
+/*
+ * Stash u-boot's recorded console output and elapsed boot time in /chosen,
+ * so the booted OS can read what u-boot printed - the only console this
+ * board exposes is the SD-pad-muxed UART, so on an assembled unit this is
+ * the one way to see u-boot's log at all. Linux: /sys/firmware/devicetree/
+ * base/chosen/u-boot,log (text) and u-boot,boot-ms (be32 ms since timer
+ * init, i.e. the pre-OS dwell this fixup runs at the very end of).
+ *
+ * The blob's free space is whatever CONFIG_SYS_FDT_PAD left over, so on
+ * -FDT_ERR_NOSPACE retry with half the length, keeping the newest bytes.
+ * Best-effort by design: failure to stash must never fail the boot.
+ */
+static void fdt_stash_console_record(void *blob)
+{
+	struct membuff *mb = (struct membuff *)&gd->console_out;
+	int avail, len, nodeoffset;
+	char *buf;
+
+	avail = membuff_avail(mb);
+	if (avail <= 0)
+		return;
+	buf = malloc(avail);
+	if (!buf)
+		return;
+	avail = membuff_get(mb, buf, avail);
+	nodeoffset = fdt_path_offset(blob, "/chosen");
+	if (nodeoffset < 0)
+		goto out;
+	for (len = avail; len >= 512; len /= 2) {
+		if (!fdt_setprop(blob, nodeoffset, "u-boot,log",
+				 buf + (avail - len), len))
+			break;
+	}
+	fdt_setprop_u32(blob, nodeoffset, "u-boot,boot-ms",
+			(u32)get_timer(0));
+out:
+	free(buf);
+}
+#endif
+
 int image_setup_libfdt(bootm_headers_t *images, void *blob,
 		       int of_size, struct lmb *lmb)
 {
@@ -656,6 +701,13 @@ int image_setup_libfdt(bootm_headers_t *images, void *blob,
 			goto err;
 		}
 	}
+
+#ifdef CONFIG_CONSOLE_RECORD
+	/* Last, so the log covers every fixup above; before the shrink below
+	 * reclaims the blob's free space.
+	 */
+	fdt_stash_console_record(blob);
+#endif
 
 	/* Delete the old LMB reservation */
 	if (lmb)
