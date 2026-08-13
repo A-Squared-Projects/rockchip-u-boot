@@ -86,14 +86,22 @@ echo "trust ini: ${TRUST_INI_ARG}"
 # fresh + writable each run. Verify it actually changed the blob: a silent no-op
 # would ship a stock-key trust.img that rejects our re-signed TAs.
 BL32_REL=$(sed -n 's/^PATH=\(.*bl32.*\)/\1/Ip' "${TRUST_INI_ARG}" | head -1)
-BL32="${RKBIN}/${BL32_REL}"
-[ -f "${BL32}" ] || { echo "ERROR: BL32 not found at ${BL32}" >&2; exit 1; }
-BL32_BEFORE=$(sha256sum "${BL32}" | cut -d' ' -f1)
-chmod +x "${SRC}/ci/change_puk"
-"${SRC}/ci/change_puk" --teebin "${BL32}" --key "${SRC}/ci/oem_privkey.pem"
-BL32_AFTER=$(sha256sum "${BL32}" | cut -d' ' -f1)
-[ "${BL32_BEFORE}" != "${BL32_AFTER}" ] || { echo "ERROR: change_puk did not modify BL32 - OEM key not applied" >&2; exit 1; }
-echo "change_puk: baked our OEM public key into ${BL32_REL}"
+if [ -n "${BL32_REL}" ]; then
+	BL32="${RKBIN}/${BL32_REL}"
+	[ -f "${BL32}" ] || { echo "ERROR: BL32 not found at ${BL32}" >&2; exit 1; }
+	BL32_BEFORE=$(sha256sum "${BL32}" | cut -d' ' -f1)
+	chmod +x "${SRC}/ci/change_puk"
+	"${SRC}/ci/change_puk" --teebin "${BL32}" --key "${SRC}/ci/oem_privkey.pem"
+	BL32_AFTER=$(sha256sum "${BL32}" | cut -d' ' -f1)
+	[ "${BL32_BEFORE}" != "${BL32_AFTER}" ] || { echo "ERROR: change_puk did not modify BL32 - OEM key not applied" >&2; exit 1; }
+	echo "change_puk: baked our OEM public key into ${BL32_REL}"
+else
+	# BL31-only trust (the android flavor): no secure world, so there is
+	# no TA public key to replace and no need for the git-crypt-held OEM
+	# key. The BL32 guard above stays fail-secure for inis that do carry
+	# one.
+	echo "trust ini carries no BL32 - BL31-only trust, change_puk skipped"
+fi
 
 (cd "${RKBIN}" && ./tools/trust_merger "${TRUST_INI_ARG}" \
 	--size "${T_KB:-512}" "${T_NUM:-2}" \
