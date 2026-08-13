@@ -67,11 +67,18 @@ jobs:
                 -w /src \
                 rithum-uboot-build ci/build.sh
           }
+          # Parked outside the checkout between builds: the secure build's
+          # `make mrproper` removes root-level *.img (CLEAN_FILES), which
+          # took the renamed android artifacts with it when they stayed in
+          # the tree.
           build rithum-rk3308-aarch32-android
-          mv uboot.img uboot-android.img
-          mv trust.img trust-bl31.img
-          sha256sum uboot-android.img trust-bl31.img > sha256sums-android.txt
+          mkdir -p "${RUNNER_TEMP}/android-flavor"
+          mv uboot.img "${RUNNER_TEMP}/android-flavor/uboot-android.img"
+          mv trust.img "${RUNNER_TEMP}/android-flavor/trust-bl31.img"
           build rithum-rk3308-aarch32
+          mv "${RUNNER_TEMP}/android-flavor/uboot-android.img" \
+             "${RUNNER_TEMP}/android-flavor/trust-bl31.img" .
+          sha256sum uboot-android.img trust-bl31.img > sha256sums-android.txt
 
       - uses: actions/upload-artifact@v4
         with:
