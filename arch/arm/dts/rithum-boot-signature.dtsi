@@ -2,7 +2,20 @@
 // Rithum boot-signing PUBLIC key for FIT signature verification.
 // PUBLIC key material only. Baked by u-boot mkimage -K (includes the RK
 // hardware-crypto rsa,np/rsa,c params). Private key: meta-rithum
-// rithum-boot-signing-key. Generated - do not hand-edit.
+// rithum-boot-signing-key. Generated - do not hand-edit the key data below
+// (the #ifdef wrapper is a structural addition, not part of the generated
+// material).
+//
+// CONFIG_FIT_SIGNATURE-gated: a flavor with no FIT_SIGNATURE support has no
+// use for this node - it can't verify anything with it - and shipping the
+// public key anyway is what made rithum_migrate.py's own bootchain-signature
+// probe have to fall back on a compiled-in error string as its signal, since
+// this node's mere presence didn't distinguish the two flavors. Gating it
+// makes the node's presence itself the signal: real, structural, and no
+// more fragile than a Kconfig symbol. rk3308-u-boot.dtsi's own kconfig.h
+// -include (scripts/Makefile.lib's dtc_cpp_flags) is what makes CONFIG_*
+// macros available to a plain .dts #ifdef at all.
+#ifdef CONFIG_FIT_SIGNATURE
 / {
 	signature {
 
@@ -23,3 +36,4 @@
 		};
 	};
 };
+#endif /* CONFIG_FIT_SIGNATURE */
