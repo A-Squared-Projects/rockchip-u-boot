@@ -16,7 +16,16 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/evp.h>
+/*
+ * OpenSSL 4.0 removed the ENGINE API. The engine paths below only ever
+ * accept a pkcs11 engine; a PEM key file on disk needs none of it, so drop
+ * them where the API is unavailable rather than port them to providers.
+ */
+#if OPENSSL_VERSION_MAJOR < 4 && !defined(OPENSSL_NO_ENGINE) && \
+	!defined(OPENSSL_NO_DEPRECATED_3_0)
+#define USE_PKCS11_ENGINE
 #include <openssl/engine.h>
+#endif
 
 #if OPENSSL_VERSION_NUMBER >= 0x10000000L
 #define HAVE_ERR_REMOVE_THREAD_STATE
@@ -111,6 +120,7 @@ err_cert:
 	return ret;
 }
 
+#ifdef USE_PKCS11_ENGINE
 /**
  * rsa_engine_get_pub_key() - read a public key from given engine
  *
@@ -168,6 +178,7 @@ err_rsa:
 	EVP_PKEY_free(key);
 	return ret;
 }
+#endif /* USE_PKCS11_ENGINE */
 
 /**
  * rsa_get_pub_key() - read a public key
@@ -181,8 +192,10 @@ err_rsa:
 static int rsa_get_pub_key(const char *keydir, const char *name,
 			   ENGINE *engine, RSA **rsap)
 {
+#ifdef USE_PKCS11_ENGINE
 	if (engine)
 		return rsa_engine_get_pub_key(keydir, name, engine, rsap);
+#endif
 	return rsa_pem_get_pub_key(keydir, name, rsap);
 }
 
@@ -222,6 +235,7 @@ static int rsa_pem_get_priv_key(const char *keydir, const char *name,
 	return 0;
 }
 
+#ifdef USE_PKCS11_ENGINE
 /**
  * rsa_engine_get_priv_key() - read a private key from given engine
  *
@@ -279,6 +293,7 @@ err_rsa:
 	EVP_PKEY_free(key);
 	return ret;
 }
+#endif /* USE_PKCS11_ENGINE */
 
 /**
  * rsa_get_priv_key() - read a private key
@@ -292,8 +307,10 @@ err_rsa:
 static int rsa_get_priv_key(const char *keydir, const char *name,
 			    ENGINE *engine, RSA **rsap)
 {
+#ifdef USE_PKCS11_ENGINE
 	if (engine)
 		return rsa_engine_get_priv_key(keydir, name, engine, rsap);
+#endif
 	return rsa_pem_get_priv_key(keydir, name, rsap);
 }
 
@@ -321,6 +338,7 @@ static int rsa_init(void)
 	return 0;
 }
 
+#ifdef USE_PKCS11_ENGINE
 static int rsa_engine_init(const char *engine_id, ENGINE **pe)
 {
 	ENGINE *e;
@@ -361,6 +379,14 @@ err_engine_by_id:
 #endif
 	return ret;
 }
+#else
+static int rsa_engine_init(const char *engine_id, ENGINE **pe)
+{
+	fprintf(stderr,
+		"Engine keys are unsupported: built against an OpenSSL with no ENGINE API\n");
+	return -ENOTSUP;
+}
+#endif /* USE_PKCS11_ENGINE */
 
 static void rsa_remove(void)
 {
@@ -376,6 +402,7 @@ static void rsa_remove(void)
 #endif
 }
 
+#ifdef USE_PKCS11_ENGINE
 static void rsa_engine_remove(ENGINE *e)
 {
 	if (e) {
@@ -383,6 +410,11 @@ static void rsa_engine_remove(ENGINE *e)
 		ENGINE_free(e);
 	}
 }
+#else
+static void rsa_engine_remove(ENGINE *e)
+{
+}
+#endif /* USE_PKCS11_ENGINE */
 
 /*
  * With this data2sign.bin, we can provide it to who real holds the RAS-private
