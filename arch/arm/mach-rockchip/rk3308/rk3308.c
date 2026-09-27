@@ -112,6 +112,13 @@ enum {
 };
 
 enum {
+	IOVSEL4_SHIFT           = 4,
+	IOVSEL4_MASK            = BIT(4),
+	VCCIO4_3V3              = 0,
+	VCCIO4_1V8,
+};
+
+enum {
 	IOVSEL3_CTRL_SHIFT	= 8,
 	IOVSEL3_CTRL_MASK	= BIT(8),
 	VCCIO3_SEL_BY_GPIO	= 0,
@@ -161,6 +168,25 @@ int rk_board_init(void)
 	rk_clrsetreg(&grf->soc_con0, IOVSEL3_CTRL_MASK | IOVSEL3_MASK, val);
 
 	gpio_free(GPIO0_A4);
+
+#ifdef CONFIG_ROCKCHIP_RK3308_VCCIO4_1V8
+	/*
+	 * VCCIO4 is the SDIO bank. TPL selects 3.3V for it unconditionally to
+	 * protect boards whose VCCIO4 rail is 3.3V, and on a board wired for
+	 * 1.8V nothing corrects that until the kernel's io-domain driver runs -
+	 * which depends on a regulator that probes asynchronously, so it can
+	 * land after the SDIO card has already been clocked to its operating
+	 * rate through pads still in 3.3V mode. Card identification survives
+	 * that at 400kHz; the first high-speed command does not.
+	 *
+	 * Select 1.8V here so the pads match the rail from U-Boot onwards and
+	 * the kernel's write becomes a no-op. Only enable this where VCCIO4 is
+	 * wired to a 1.8V supply: 1.8V pad mode on a 3.3V rail is the direction
+	 * that damages the SoC.
+	 */
+	rk_clrsetreg(&grf->soc_con0, IOVSEL4_MASK, VCCIO4_1V8 << IOVSEL4_SHIFT);
+#endif
+
 	return 0;
 }
 
@@ -190,13 +216,6 @@ int rk_board_init(void)
 #define CRU_CLKGATE_CON10		0x0328
 #define CRU_CLKGATE_CON11		0x032c
 #define CRU_CLKGATE_CON12		0x0330
-
-enum {
-	IOVSEL4_SHIFT           = 4,
-	IOVSEL4_MASK            = BIT(4),
-	VCCIO4_3V3              = 0,
-	VCCIO4_1V8,
-};
 
 int arch_cpu_init(void)
 {

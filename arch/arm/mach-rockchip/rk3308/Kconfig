@@ -15,4 +15,19 @@ config SPL_SERIAL_SUPPORT
 
 source "board/rockchip/evb_rk3308/Kconfig"
 
+
+config ROCKCHIP_RK3308_VCCIO4_1V8
+	bool "Select 1.8V pad mode for VCCIO4 in U-Boot"
+	depends on ROCKCHIP_RK3308
+	default n
+	help
+	  TPL selects 3.3V for the VCCIO4 (SDIO) pad bank unconditionally, to
+	  protect boards whose VCCIO4 rail is 3.3V. On a board wired for 1.8V
+	  nothing corrects that until the kernel io-domain driver runs, which
+	  can be after the SDIO card has been clocked to its operating rate
+	  through mismatched pads.
+
+	  Say Y only if VCCIO4 is wired to a 1.8V supply on this board. 1.8V
+	  pad mode on a 3.3V rail risks damaging the SoC.
+
 endif
