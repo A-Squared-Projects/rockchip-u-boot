@@ -123,39 +123,10 @@ enum {
 	VCCIO3_1V8,
 };
 
-/* CRU_GLB_RST_ST: write-1-to-clear status of the last hot reset */
 enum {
-	SND_GLB_TSADC_RST	= BIT(5),
-	FST_GLB_TSADC_RST	= BIT(4),
 	SND_GLB_WDT_RST		= BIT(3),
 	FST_GLB_WDT_RST		= BIT(2),
-	SND_GLB_RST		= BIT(1),
-	FST_GLB_RST		= BIT(0),
-	GLB_RST_ST_MASK		= GENMASK(5, 0),
 };
-
-/*
- * Captured in arch_cpu_init() and reported from rk_board_init(), once
- * console recording is live, so the cause reaches /chosen/u-boot,log.
- * In .data because .bss is not usable before relocation.
- */
-static u32 glb_rst_st __section(".data");
-
-static void print_reset_cause(void)
-{
-	const char *cause;
-
-	if (glb_rst_st & (FST_GLB_TSADC_RST | SND_GLB_TSADC_RST))
-		cause = "thermal";
-	else if (glb_rst_st & (FST_GLB_WDT_RST | SND_GLB_WDT_RST))
-		cause = "watchdog";
-	else if (glb_rst_st & (FST_GLB_RST | SND_GLB_RST))
-		cause = "software";
-	else
-		cause = "power-on";
-
-	printf("Reset cause: %s (GLB_RST_ST 0x%08x)\n", cause, glb_rst_st);
-}
 
 /*
  * The voltage of VCCIO3(which is the voltage domain of emmc/flash/sfc
@@ -166,6 +137,36 @@ static void print_reset_cause(void)
  */
 
 #define GPIO0_A4	4
+
+/*
+ * The loader reads CRU_GLB_RST_ST and clears it before u-boot runs, so
+ * the boot-mode register is what is left of the reset cause: the loader
+ * sets BOOT_WATCHDOG after a watchdog reset, the kernel writes a
+ * REBOOT_FLAG value before a software reset and a panic, and a power-on
+ * reset leaves it at zero. Reported here, ahead of setup_boot_mode()
+ * clearing it, and after console recording starts, so the line reaches
+ * /chosen/u-boot,log.
+ */
+static void print_reset_cause(void)
+{
+	static struct rk3308_cru * const cru = (void *)CRU_BASE;
+	u32 mode = readl((void *)CONFIG_ROCKCHIP_BOOT_MODE_REG);
+	const char *cause;
+
+	if (mode == BOOT_WATCHDOG)
+		cause = "watchdog";
+	else if (mode == BOOT_PANIC)
+		cause = "panic";
+	else if ((mode & ~0xff) == REBOOT_FLAG)
+		cause = "software";
+	else if (mode == 0)
+		cause = "power-on";
+	else
+		cause = "unknown";
+
+	printf("Reset cause: %s (boot mode 0x%08x, GLB_RST_ST 0x%08x)\n",
+	       cause, mode, readl(&cru->glb_rst_st));
+}
 
 int rk_board_init(void)
 {
@@ -253,6 +254,7 @@ int arch_cpu_init(void)
 #else /* defined(CONFIG_TPL_BUILD) */
 	static struct rk3308_cru * const cru = (void *)CRU_BASE;
 	static struct rk3308_grf * const grf = (void *)GRF_BASE;
+	u32 glb_rst_st;
 
 	/*
 	 * RK3308 internally default select 1.8v for VCCIO4 on reset state,
@@ -263,12 +265,10 @@ int arch_cpu_init(void)
 	rk_clrsetreg(&grf->soc_con0, IOVSEL4_MASK, VCCIO4_3V3 << IOVSEL4_SHIFT);
 
 	/*
-	 * write BOOT_WATCHDOG to boot mode register, if we are reset by wdt.
-	 * Every status bit is cleared, so the next boot reads only the reset
-	 * that caused it.
+	 * write BOOT_WATCHDOG to boot mode register, if we are reset by wdt
 	 */
 	glb_rst_st = readl(&cru->glb_rst_st);
-	writel(glb_rst_st & GLB_RST_ST_MASK, &cru->glb_rst_st);
+	writel(FST_GLB_WDT_RST | SND_GLB_WDT_RST, &cru->glb_rst_st);
 	if (glb_rst_st & (FST_GLB_WDT_RST | SND_GLB_WDT_RST))
 		writel(BOOT_WATCHDOG, CONFIG_ROCKCHIP_BOOT_MODE_REG);
 
