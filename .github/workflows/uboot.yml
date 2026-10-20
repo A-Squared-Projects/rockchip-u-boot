@@ -14,7 +14,7 @@ permissions:
 env:
   # rockchip-linux/rkbin commit providing tools/loaderimage. Pinned so the
   # image header (including js_hash) is packed byte-identically every run.
-  RKBIN_REV: ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4
+  RKBIN_REV: 3e288fe814e059dd06833495f845cab04ac20a5c
   # sha256 of the official Arm Legacy Linaro toolchain tarball (see ci/Dockerfile).
   TC_SHA256: 926b791cd689e8573c3cd912d10e30b7d12a08bb16b9b9eaf598e2074052dc5f
 
