@@ -304,6 +304,16 @@ config SILENT_CONSOLE
 	  GD_FLG_SILENT flag is set. Changing the environment variable later
 	  will update the flag.
 
+config SILENT_CONSOLE_ALWAYS
+	bool "Silence the console unconditionally"
+	depends on SILENT_CONSOLE
+	help
+	  Silence the console from its first character, whatever the
+	  'silent' environment variable says, and announce nothing. For a
+	  build whose console must never be written, where an environment
+	  that could clear 'silent' is not to be trusted. Console recording
+	  still captures the output.
+
 config SILENT_U_BOOT_ONLY
 	bool "Only silence the U-Boot console"
 	depends on SILENT_CONSOLE

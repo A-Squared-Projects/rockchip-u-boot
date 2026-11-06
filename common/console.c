@@ -84,7 +84,7 @@ static int on_silent(const char *name, const char *value, enum env_op op,
 		return 0;
 #endif
 
-	if (value != NULL)
+	if (value != NULL || IS_ENABLED(CONFIG_SILENT_CONSOLE_ALWAYS))
 		gd->flags |= GD_FLG_SILENT;
 	else
 		gd->flags &= ~GD_FLG_SILENT;
@@ -786,7 +786,9 @@ int console_assign(int file, const char *devname)
 static void console_update_silent(void)
 {
 #ifdef CONFIG_SILENT_CONSOLE
-	if (env_get("silent") != NULL) {
+	if (IS_ENABLED(CONFIG_SILENT_CONSOLE_ALWAYS)) {
+		gd->flags |= GD_FLG_SILENT;
+	} else if (env_get("silent") != NULL) {
 		printf("U-Boot: enable silent console\n");
 		gd->flags |= GD_FLG_SILENT;
 	} else {
