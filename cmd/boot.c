@@ -63,6 +63,11 @@ U_BOOT_CMD(
 
 static int do_reboot_brom(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
+	if (IS_ENABLED(CONFIG_ROCKCHIP_NO_DOWNLOAD)) {
+		printf("rbrom: refused, this build has no download mode\n");
+		return CMD_RET_FAILURE;
+	}
+
 	writel(BOOT_BROM_DOWNLOAD, CONFIG_ROCKCHIP_BOOT_MODE_REG);
 	do_reset(NULL, 0, 0, NULL);
 

@@ -15,6 +15,11 @@ __weak void do_board_download(void)
 static int do_download(cmd_tbl_t *cmdtp, int flag,
 		       int argc, char * const argv[])
 {
+	if (IS_ENABLED(CONFIG_ROCKCHIP_NO_DOWNLOAD)) {
+		printf("download: refused, this build has no download mode\n");
+		return CMD_RET_FAILURE;
+	}
+
 	disable_ctrlc(1);
 
 	/* Allow board specific download, maybe noreturn */

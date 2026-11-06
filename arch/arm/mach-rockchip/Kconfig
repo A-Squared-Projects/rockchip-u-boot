@@ -1153,6 +1153,18 @@ config ROCKCHIP_NEW_IDB
 	help
 	  The new IDB header was introduced from RK356X.
 
+config ROCKCHIP_NO_DOWNLOAD
+	bool "Refuse every entry to rockusb and bootrom download"
+	help
+	  Make the 'download' and 'rbrom' commands fail instead of entering
+	  rockusb or rebooting into bootrom download. Every route into a
+	  download mode goes through them: a 'loader' request in the
+	  boot-mode register, the download key, a loader/kernel CPU
+	  mismatch and a FIT that fails verification. Rockusb gives anyone
+	  with a USB cable unauthenticated read and write of the boot
+	  media, so a production build carries no way into it. Each caller
+	  then carries on booting, or hangs where it would have hung.
+
 config ROCKCHIP_HOTKEY
 	bool "Rockchip hotkey"
 	default y
