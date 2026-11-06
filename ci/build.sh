@@ -43,6 +43,16 @@ rm -f .scmversion
 echo "-g$(git rev-parse --short=12 HEAD)" > .scmversion
 
 make "${BOARD}_defconfig"
+# FRAGMENT names a ci/ config fragment merged over the defconfig - the
+# production twin of a flavour. merge_config.sh only warns when a value does
+# not take, so check each line landed.
+if [ -n "${FRAGMENT:-}" ]; then
+	scripts/kconfig/merge_config.sh -m .config "ci/${FRAGMENT}"
+	make olddefconfig
+	grep -E '^CONFIG_|^# CONFIG_.* is not set$' "ci/${FRAGMENT}" | while read -r l; do
+		grep -qxF "$l" .config || { echo "ERROR: ${FRAGMENT}: '$l' did not take" >&2; exit 1; }
+	done
+fi
 make -j"$(nproc)"
 
 LOAD_ADDR=$(sed -n 's/^CONFIG_SYS_TEXT_BASE=//p' include/autoconf.mk | tr -d '\r')
@@ -61,6 +71,12 @@ fi
 echo "u-boot.bin: ${BIN} / ${MAX} bytes ($(( MAX - BIN )) spare)"
 
 "${LOADERIMAGE}" --pack --uboot u-boot.bin uboot.img "${LOAD_ADDR}" --size "${U_KB}" "${U_NUM}"
+# A fragment build is uboot.img alone: its trust is the flavour's own, and
+# change_puk would find BL32 already carrying our key.
+if [ -n "${FRAGMENT:-}" ]; then
+	sha256sum u-boot.bin uboot.img | tee sha256sums.txt
+	exit 0
+fi
 
 # trust.img packed the way make.sh's ARM64_TRUSTZONE path does for this
 # config. Deterministic: pure function of the trust ini + rkbin blobs.

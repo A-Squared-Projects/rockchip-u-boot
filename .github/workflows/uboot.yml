@@ -52,8 +52,10 @@ jobs:
           grep -q 'BEGIN' ci/oem_privkey.pem || { echo "ERROR: git-crypt unlock did not decrypt the OEM key" >&2; exit 1; }
 
       - name: Build uboot.img
-        # Two flavors from the same source, one tag. The android flavor first,
-        # renamed aside; the secure flavor last, keeping the canonical
+        # Two flavors from the same source, one tag, each with a production
+        # twin (ci/production.config: silent, no CLI, no download mode) that
+        # shares its trust. The android flavor and the twins first, renamed
+        # aside; the secure flavor last, keeping the canonical
         # uboot.img/trust.img/sha256sums.txt names existing consumers pin.
         run: |
           build() {
@@ -64,21 +66,26 @@ jobs:
                 -v "$(realpath "${GITHUB_WORKSPACE}/../rkbin"):/rkbin" \
                 -e RKBIN=/rkbin \
                 -e BOARD="$1" \
+                -e FRAGMENT="${2:-}" \
                 -w /src \
                 rithum-uboot-build ci/build.sh
           }
-          # Parked outside the checkout between builds: the secure build's
+          # Parked outside the checkout between builds: each build's
           # `make mrproper` removes root-level *.img (CLEAN_FILES), which
-          # took the renamed android artifacts with it when they stayed in
-          # the tree.
+          # took renamed artifacts with it when they stayed in the tree.
+          P="${RUNNER_TEMP}/parked"
+          mkdir -p "$P"
+          build rithum-rk3308-aarch32-android production.config
+          mv uboot.img "$P/uboot-android-production.img"
+          build rithum-rk3308-aarch32 production.config
+          mv uboot.img "$P/uboot-production.img"
           build rithum-rk3308-aarch32-android
-          mkdir -p "${RUNNER_TEMP}/android-flavor"
-          mv uboot.img "${RUNNER_TEMP}/android-flavor/uboot-android.img"
-          mv trust.img "${RUNNER_TEMP}/android-flavor/trust-bl31.img"
+          mv uboot.img "$P/uboot-android.img"
+          mv trust.img "$P/trust-bl31.img"
           build rithum-rk3308-aarch32
-          mv "${RUNNER_TEMP}/android-flavor/uboot-android.img" \
-             "${RUNNER_TEMP}/android-flavor/trust-bl31.img" .
+          mv "$P"/*.img .
           sha256sum uboot-android.img trust-bl31.img > sha256sums-android.txt
+          sha256sum uboot-production.img uboot-android-production.img > sha256sums-production.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -90,6 +97,9 @@ jobs:
             uboot-android.img
             trust-bl31.img
             sha256sums-android.txt
+            uboot-production.img
+            uboot-android-production.img
+            sha256sums-production.txt
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -99,5 +109,6 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
               uboot.img trust.img sha256sums.txt \
               uboot-android.img trust-bl31.img sha256sums-android.txt \
+              uboot-production.img uboot-android-production.img sha256sums-production.txt \
               --title "${GITHUB_REF_NAME}" \
-              --notes "Two flavors of uboot.img + trust.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. SECURE (uboot.img + trust.img, the main line): boots signed FIT only (CONFIG_FIT_SIGNATURE); trust.img packs BL31 + BL32 (OP-TEE 3.13.0) per ci/RK3308AARCH32TRUST.ini and requires a kernel that reserves the 0x200000-0x600000 secure-memory carveout - ship the two together. ANDROID (uboot-android.img + trust-bl31.img, the wrynose line): full boot cascade (Android bootimg + unsigned FIT), BL31-only trust per ci/RK3308AARCH32TRUST-BL31.ini, no secure world. Flash uboot* to the uboot partition, trust* to the trust partition, always as a matched pair from the same flavor. The first-stage loader stays on its factory version (USB-maskrom only)."
+              --notes "Two flavors of uboot.img + trust.img for the Rithum Switch (RK3308 AArch32), built from ${GITHUB_SHA} by the uboot workflow. SECURE (uboot.img + trust.img, the main line): boots signed FIT only (CONFIG_FIT_SIGNATURE); trust.img packs BL31 + BL32 (OP-TEE 3.13.0) per ci/RK3308AARCH32TRUST.ini and requires a kernel that reserves the 0x200000-0x600000 secure-memory carveout - ship the two together. ANDROID (uboot-android.img + trust-bl31.img, the wrynose line): full boot cascade (Android bootimg + unsigned FIT), BL31-only trust per ci/RK3308AARCH32TRUST-BL31.ini, no secure world. Flash uboot* to the uboot partition, trust* to the trust partition, always as a matched pair from the same flavor. PRODUCTION (uboot-production.img with trust.img, uboot-android-production.img with trust-bl31.img): the same flavors built with ci/production.config - nothing on the debug UART, no command line, no rockusb or bootrom download; /chosen/u-boot,log still records the console. The first-stage loader stays on its factory version (USB-maskrom only)."
