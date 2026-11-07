@@ -15,6 +15,7 @@
 #include <asm/arch/uimage.h>
 #include <asm/arch/fit.h>
 #include <asm/arch/mos.h>
+#include <image.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -156,69 +157,151 @@ void resource_destroy(void)
 }
 
 #ifdef CONFIG_ANDROID_BOOT_IMAGE
+/* Upper bound on the "logo" partition's FIT: a 480x480 24bpp BMP, a PNG
+ * and the FIT around them fit well inside it. */
+#define LOGO_FIT_MAX_SIZE	(1024 * 1024)
+#define LOGO_FIT_BMP_NODE	FIT_IMAGES_PATH "/bmp"
+
 /*
- * Add logo.bmp and logo_kernel.bmp from "logo" parititon
- *
- * Provide a "logo" partition for user to store logo.bmp and
- * logo_kernel.bmp, so that the user can update them from
- * kernel or user-space dynamically.
- *
- * "logo" partition layout, do not change order:
- *
- *   |----------------------| 0x00
- *   | raw logo.bmp	    |
- *   |----------------------| -> 512-byte aligned
- *   | raw logo_kernel.bmp  |
- *   |----------------------|
- *
- * N: the sector count of logo.bmp
- *
- * How to generate:
- * 	cat logo.bmp > logo.img && truncate -s %512 logo.img && cat logo_kernel.bmp >> logo.img
+ * Verify the logo FIT's "bmp" image. Every hash node must match, and there
+ * must be at least one: an image with no hash node otherwise passes
+ * fit_image_verify(). On a FIT_SIGNATURE build the image must also carry a
+ * signature made by /signature/key-logo in the control DTB, checked against
+ * that key alone. key-logo has no "required" property, so it plays no part in
+ * verifying the boot image, and it can sign a logo but never a kernel.
  */
-static int resource_setup_logo_bmp(struct blk_desc *desc)
+static int logo_fit_verify(const void *fit, int noffset, const void *data,
+			   size_t size)
 {
-	struct bmp_header *header;
-	const char *name[] = { "logo.bmp", "logo_kernel.bmp" };
+	int hashes = 0;
+	int sub;
+	char *err = NULL;
+#ifdef CONFIG_FIT_SIGNATURE
+	int keynode = fdt_path_offset(gd_fdt_blob(), "/" FIT_SIG_NODENAME "/key-logo");
+	bool signed_ok = false;
+
+	if (keynode < 0) {
+		printf("LOGO: no key-logo in the control DTB\n");
+		return -ENOKEY;
+	}
+#endif
+
+	fdt_for_each_subnode(sub, fit, noffset) {
+		const char *name = fit_get_name(fit, sub, NULL);
+
+		if (!strncmp(name, FIT_HASH_NODENAME, strlen(FIT_HASH_NODENAME))) {
+			if (fit_image_check_hash(fit, sub, data, size, &err)) {
+				printf("LOGO: %s\n", err);
+				return -EBADMSG;
+			}
+			hashes++;
+		}
+#ifdef CONFIG_FIT_SIGNATURE
+		else if (!strncmp(name, FIT_SIG_NODENAME, strlen(FIT_SIG_NODENAME))) {
+			if (!fit_image_check_sig(fit, sub, data, size, keynode, &err))
+				signed_ok = true;
+		}
+#endif
+	}
+
+	if (!hashes) {
+		printf("LOGO: bmp image has no hash\n");
+		return -EBADMSG;
+	}
+#ifdef CONFIG_FIT_SIGNATURE
+	if (!signed_ok) {
+		printf("LOGO: bmp image is not signed by key-logo\n");
+		return -EPERM;
+	}
+#endif
+	return 0;
+}
+
+/*
+ * Take logo.bmp and logo_kernel.bmp from a "logo" partition, if there is one
+ * and it holds a FIT whose "bmp" image verifies (logo_fit_verify()). Rockchip's
+ * own "logo" partition support read raw BMPs from it with no check at all,
+ * and they replaced the boot image's logo - including the signed FIT's - so
+ * anything that could write the partition chose what u-boot parsed. Now
+ * nothing from the partition is parsed until it has verified, and on any
+ * failure the boot image's own logo stands.
+ *
+ * Both names point at the one verified image, held in RAM for the rest of the
+ * boot. The partition is read once, whichever resource image is set up first.
+ */
+static int resource_setup_logo_fit(struct blk_desc *desc)
+{
+	static bool done;
 	disk_partition_t part;
-	u32 blk_offset = 0;
-	u32 filesz;
-	int ret, i;
+	void *hdr = NULL, *fit = NULL;
+	const void *data;
+	size_t size;
+	u32 total, blks;
+	int noffset, ret;
+
+	if (done)
+		return 0;
+	done = true;
 
 	if (part_get_info_by_name(desc, PART_LOGO, &part) < 0)
 		return 0;
 
-	header = memalign(ARCH_DMA_MINALIGN, desc->blksz);
-	if (!header)
+	hdr = memalign(ARCH_DMA_MINALIGN, desc->blksz);
+	if (!hdr)
 		return -ENOMEM;
-
-	for (i = 0; i < ARRAY_SIZE(name); i++) {
-		if (blk_dread(desc, part.start + blk_offset, 1, header) != 1) {
-			ret = -EIO;
-			break;
-		}
-
-		if (header->signature[0] != 'B' || header->signature[1] != 'M') {
-			ret = -EINVAL;
-			break;
-		}
-
-		filesz = get_unaligned_le32(&header->file_size);
-		ret = resource_add_file(name[i], filesz, part.start, blk_offset,
-					NULL, 0, false);
-		if (ret)
-			break;
-
-		/* move to next file */
-		blk_offset += DIV_ROUND_UP(filesz, desc->blksz);
-
-		printf("LOGO: %s\n", name[i]);
-
+	if (blk_dread(desc, part.start, 1, hdr) != 1) {
+		ret = -EIO;
+		goto ignore;
+	}
+	if (fdt_check_header(hdr)) {
+		ret = -EINVAL;
+		goto ignore;
+	}
+	total = fdt_totalsize(hdr);
+	blks = DIV_ROUND_UP(total, desc->blksz);
+	if (total > LOGO_FIT_MAX_SIZE || blks > part.size) {
+		ret = -EFBIG;
+		goto ignore;
 	}
 
-	free(header);
+	fit = memalign(ARCH_DMA_MINALIGN, blks * desc->blksz);
+	if (!fit) {
+		ret = -ENOMEM;
+		goto ignore;
+	}
+	if (blk_dread(desc, part.start, blks, fit) != blks) {
+		ret = -EIO;
+		goto ignore;
+	}
+	/* Re-check the header as read, not as first seen. */
+	if (fdt_check_header(fit) || fdt_totalsize(fit) != total) {
+		ret = -EINVAL;
+		goto ignore;
+	}
 
-	return ret;
+	noffset = fdt_path_offset(fit, LOGO_FIT_BMP_NODE);
+	if (noffset < 0 || fit_image_get_data(fit, noffset, &data, &size) ||
+	    size < sizeof(struct bmp_header)) {
+		ret = -EINVAL;
+		goto ignore;
+	}
+	ret = logo_fit_verify(fit, noffset, data, size);
+	if (ret)
+		goto ignore;
+
+	/* in_ram: blk_start is the address of the data itself. */
+	resource_add_file("logo.bmp", size, (ulong)data, 0, NULL, 0, true);
+	resource_add_file("logo_kernel.bmp", size, (ulong)data, 0, NULL, 0, true);
+	printf("LOGO: verified logo from '%s'\n", PART_LOGO);
+	free(hdr);
+	return 0;
+
+ignore:
+	printf("LOGO: '%s' partition ignored (%d), keeping the boot image's logo\n",
+	       PART_LOGO, ret);
+	free(fit);
+	free(hdr);
+	return 0;
 }
 #endif
 
@@ -246,7 +329,7 @@ static int resource_setup_list(struct blk_desc *desc, ulong blk_start,
 #ifdef CONFIG_ANDROID_BOOT_IMAGE
 	/* For embedded resource.img file, we don't have a valid 'desc' */
 	if (desc->if_type != IF_TYPE_UNKNOWN)
-		resource_setup_logo_bmp(desc);
+		resource_setup_logo_fit(desc);
 #endif
 	return 0;
 }
