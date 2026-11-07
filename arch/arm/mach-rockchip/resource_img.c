@@ -186,23 +186,32 @@ static int logo_fit_verify(const void *fit, int noffset, const void *data,
 	}
 #endif
 
+	/* The checks print their algorithm names; each gets a + or a -, as
+	 * bootm's do, and the line ends once they are all done. */
+	printf("LOGO: verifying bmp image ");
 	fdt_for_each_subnode(sub, fit, noffset) {
 		const char *name = fit_get_name(fit, sub, NULL);
 
 		if (!strncmp(name, FIT_HASH_NODENAME, strlen(FIT_HASH_NODENAME))) {
 			if (fit_image_check_hash(fit, sub, data, size, &err)) {
-				printf("LOGO: %s\n", err);
+				printf("-\nLOGO: %s\n", err);
 				return -EBADMSG;
 			}
+			printf("+ ");
 			hashes++;
 		}
 #ifdef CONFIG_FIT_SIGNATURE
 		else if (!strncmp(name, FIT_SIG_NODENAME, strlen(FIT_SIG_NODENAME))) {
-			if (!fit_image_check_sig(fit, sub, data, size, keynode, &err))
+			if (!fit_image_check_sig(fit, sub, data, size, keynode, &err)) {
+				printf("+ ");
 				signed_ok = true;
+			} else {
+				printf("- ");
+			}
 		}
 #endif
 	}
+	printf("\n");
 
 	if (!hashes) {
 		printf("LOGO: bmp image has no hash\n");
